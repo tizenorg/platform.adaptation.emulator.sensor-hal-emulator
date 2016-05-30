@@ -1,0 +1,13 @@
+SUBSYSTEM!="input", GOTO="sensor_rules_end"
+ENV{ID_INPUT_TOUCHPAD}=="1", GOTO="sensor_rules_end"
+ENV{ID_INPUT_TOUCHSCREEN}=="1", GOTO="sensor_rules_end"
+ENV{ID_INPUT_KEY}=="1", GOTO="sensor_rules_end"
+ENV{ID_INPUT_KEYPAD}=="1", GOTO="sensor_rules_end"
+ENV{ID_INPUT_KEYBOARD}=="1", GOTO="sensor_rules_end"
+ENV{ID_INPUT_MOUSE}=="1", GOTO="sensor_rules_end"
+ENV{ID_INPUT_JOYSTICK}=="1", GOTO="sensor_rules_end"
+
+SUBSYSTEM=="input", ACTION=="add", RUN+="/bin/chown sensor:input %S/%p/enable %S/%p/poll_delay"
+SUBSYSTEM=="input", ACTION=="add", RUN+="/bin/chsmack -a * %S/%p/enable %S/%p/poll_delay"
+
+LABEL="sensor_rules_end"

@@ -5,6 +5,7 @@ Release:    0
 Group:      Service/Sensor
 License:    Apache-2.0
 Source0:    %{name}-%{version}.tar.gz
+Source1:    99-sensor.rules
 
 ExcludeArch: %{arm} aarch64
 
@@ -34,6 +35,10 @@ make %{?jobs:-j%jobs}
 rm -rf %{buildroot}
 %make_install
 
+mkdir -p %{buildroot}%{_libdir}/udev/rules.d
+
+install -m 0644 %SOURCE1 %{buildroot}%{_libdir}/udev/rules.d
+
 %post
 /sbin/ldconfig
 
@@ -43,5 +48,6 @@ rm -rf %{buildroot}
 %files
 %attr(0644,root,root)/usr/etc/sensor.xml
 %manifest packaging/%{name}.manifest
+%{_libdir}/udev/rules.d/99-sensor.rules
 %{_libdir}/sensor/*.so
 %{_datadir}/license/sensor-hal-emul
