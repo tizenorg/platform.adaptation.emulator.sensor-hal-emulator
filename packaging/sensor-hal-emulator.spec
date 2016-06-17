@@ -1,4 +1,4 @@
-Name:       sensor-hal-emul
+Name:       sensor-hal-emulator
 Summary:    Emulator Sensor HAL
 Version:    1.0.0
 Release:    0
@@ -50,4 +50,4 @@ install -m 0644 %SOURCE1 %{buildroot}%{_libdir}/udev/rules.d
 %manifest packaging/%{name}.manifest
 %{_libdir}/udev/rules.d/99-sensor.rules
 %{_libdir}/sensor/*.so
-%{_datadir}/license/sensor-hal-emul
+%{_datadir}/license/sensor-hal-emulator
