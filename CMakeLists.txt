@@ -1,5 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
-PROJECT(sensor-hal-emul CXX)
+PROJECT(sensor-hal-emulator CXX)
 INCLUDE(GNUInstallDirs)
 
 SET(ACCEL "ON")
