@@ -18,10 +18,12 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <string.h>
-#include <fstream>
+#include <sys/ioctl.h>
+#include <linux/input.h>
 #include <util.h>
 #include <sensor_log.h>
 #include <sensor_config.h>
+#include <fstream>
 
 using std::ifstream;
 using std::ofstream;
