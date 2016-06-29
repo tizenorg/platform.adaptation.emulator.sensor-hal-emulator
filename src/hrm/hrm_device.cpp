@@ -27,8 +27,17 @@
 #include <util.h>
 #include <sensor_common.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
+
 #include "hrm_device.h"
+
+#define MODEL_NAME "maru_sensor_hrm_1"
+#define VENDOR "Tizen_SDK"
+#define MIN_RANGE 0
+#define MAX_RANGE 1000
+#define RESOLUTION 1
+#define RAW_DATA_UNIT 0.1
+#define MIN_INTERVAL 1
+#define MAX_BATCH_COUNT 0
 
 #define SENSOR_NAME "SENSOR_HRM"
 #define SENSOR_TYPE_HRM "HRM"
@@ -43,13 +52,13 @@ static sensor_info_t sensor_info = {
 	name: SENSOR_NAME,
 	type: SENSOR_DEVICE_HRM,
 	event_type: (SENSOR_DEVICE_HRM << SENSOR_EVENT_SHIFT) | RAW_DATA_EVENT,
-	model_name: UNKNOWN_NAME,
-	vendor: UNKNOWN_NAME,
-	min_range: 0,
-	max_range: 1,
-	resolution: 1,
-	min_interval: 1,
-	max_batch_count: 0,
+	model_name: MODEL_NAME,
+	vendor: VENDOR,
+	min_range: MIN_RANGE,
+	max_range: MAX_RANGE,
+	resolution: RAW_DATA_UNIT,
+	min_interval: MIN_INTERVAL,
+	max_batch_count: MAX_BATCH_COUNT,
 	wakeup_supported: false
 };
 
@@ -59,24 +68,15 @@ hrm_device::hrm_device()
 , m_spo2(0)
 , m_peek_to_peek(0)
 , m_snr(0.0f)
-, m_raw_data_unit(DEFAULT_RAW_DATA_UNIT)
 , m_polling_interval(1000)
 , m_fired_time(0)
 , m_interval_supported(false)
 , m_sensorhub_controlled(false)
 {
-	double raw_data_unit = DEFAULT_RAW_DATA_UNIT;
-
 	const std::string sensorhub_interval_node_name = HRM_SENSORHUB_POLL_NODE_NAME;
-	config::sensor_config &config = config::sensor_config::get_instance();
 
 	node_info_query query;
 	node_info info;
-
-	if (!util::find_model_id(SENSOR_TYPE_HRM, m_model_id)) {
-		_E("Failed to find model id");
-		throw ENXIO;
-	}
 
 	query.sensorhub_controlled = m_sensorhub_controlled = util::is_sensorhub_controlled(sensorhub_interval_node_name);
 	query.sensor_type = SENSOR_TYPE_HRM;
@@ -98,27 +98,6 @@ hrm_device::hrm_device()
 
 	if (access(m_interval_node.c_str(), F_OK) == 0)
 		m_interval_supported = true;
-
-	if (!config.get(SENSOR_TYPE_HRM, m_model_id, ELEMENT_VENDOR, m_vendor)) {
-		_E("[VENDOR] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_vendor = %s", m_vendor.c_str());
-
-	if (!config.get(SENSOR_TYPE_HRM, m_model_id, ELEMENT_NAME, m_chip_name)) {
-		_E("[NAME] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_chip_name = %s",m_chip_name.c_str());
-
-	if (!config.get(SENSOR_TYPE_HRM, m_model_id, ELEMENT_RAW_DATA_UNIT, raw_data_unit)) {
-		_I("[RAW_DATA_UNIT] is empty");
-	}
-
-	m_raw_data_unit = (float)(raw_data_unit);
-	_I("m_raw_data_unit = %f", m_raw_data_unit);
 
 	m_node_handle = open(m_data_node.c_str(), O_RDONLY);
 
@@ -155,8 +134,6 @@ int hrm_device::get_poll_fd(void)
 
 int hrm_device::get_sensors(const sensor_info_t **sensors)
 {
-	sensor_info.model_name = m_chip_name.c_str();
-	sensor_info.vendor = m_vendor.c_str();
 	*sensors = &sensor_info;
 
 	return 1;
@@ -247,7 +224,7 @@ bool hrm_device::update_value_input_event(void)
 		}
 	}
 
-	if ((hrm_raw[0] * m_raw_data_unit) > HR_MAX) {
+	if (hrm_raw[0] * RAW_DATA_UNIT > HR_MAX) {
 		_E("Drop abnormal HR: %d", hrm_raw[0]);
 		return false;
 	}
@@ -278,7 +255,6 @@ int hrm_device::read_fd(uint32_t **ids)
 
 int hrm_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 {
-	int remains = 1;
 	sensor_data_t *sensor_data;
 	sensor_data = (sensor_data_t *)malloc(sizeof(sensor_data_t));
 	retvm_if(!sensor_data, -ENOMEM, "Memory allocation failed");
@@ -296,10 +272,10 @@ int hrm_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 	*data = sensor_data;
 	*length = sizeof(sensor_data_t);
 
-	return --remains;
+	return 1;
 }
 
 void hrm_device::raw_to_base(sensor_data_t *data)
 {
-	data->values[0] = data->values[0] * m_raw_data_unit;
+	data->values[0] = data->values[0] * RAW_DATA_UNIT;
 }

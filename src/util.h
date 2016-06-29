@@ -53,7 +53,6 @@ typedef struct {
 namespace util {
 	bool set_monotonic_clock(int fd);
 
-	bool find_model_id(const std::string &sensor_type, std::string &model_id);
 	bool set_enable_node(const std::string &node_path, bool sensorhub_controlled, bool enable, int enable_bit = 0);
 
 	unsigned long long get_timestamp(void);

@@ -27,8 +27,21 @@
 #include <util.h>
 #include <sensor_common.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
+
 #include "accel_device.h"
+
+#define MODEL_NAME "maru_sensor_accel_1"
+#define VENDOR "Tizen_SDK"
+#define RESOLUTION 16
+#define RAW_DATA_UNIT 0.061
+#define MIN_INTERVAL 1
+#define MAX_BATCH_COUNT 0
+
+#define SENSOR_NAME "SENSOR_ACCELEROMETER"
+#define SENSOR_TYPE_ACCEL		"ACCEL"
+
+#define INPUT_NAME	"accelerometer_sensor"
+#define ACCEL_SENSORHUB_POLL_NODE_NAME "accel_poll_delay"
 
 #define GRAVITY 9.80665
 #define G_TO_MG 1000
@@ -37,19 +50,6 @@
 
 #define MIN_RANGE(RES) (-((1 << (RES))/2))
 #define MAX_RANGE(RES) (((1 << (RES))/2)-1)
-
-#define MODEL_NAME "UNKNOWN"
-#define VENDOR "UNKNOWN"
-#define RESOLUTION 0
-#define RAW_DATA_UNIT 0
-#define MIN_INTERVAL 0
-#define MAX_BATCH_COUNT 0
-
-#define SENSOR_NAME "SENSOR_ACCELEROMETER"
-#define SENSOR_TYPE_ACCEL		"ACCEL"
-
-#define INPUT_NAME	"accelerometer_sensor"
-#define ACCEL_SENSORHUB_POLL_NODE_NAME "accel_poll_delay"
 
 static sensor_info_t sensor_info = {
 	id: 0x1,
@@ -76,15 +76,9 @@ accel_device::accel_device()
 , m_sensorhub_controlled(false)
 {
 	const std::string sensorhub_interval_node_name = ACCEL_SENSORHUB_POLL_NODE_NAME;
-	config::sensor_config &config = config::sensor_config::get_instance();
 
 	node_info_query query;
 	node_info info;
-
-	if (!util::find_model_id(SENSOR_TYPE_ACCEL, m_model_id)) {
-		_E("Failed to find model id");
-		throw ENXIO;
-	}
 
 	query.sensorhub_controlled = m_sensorhub_controlled = util::is_sensorhub_controlled(sensorhub_interval_node_name);
 	query.sensor_type = SENSOR_TYPE_ACCEL;
@@ -103,41 +97,6 @@ accel_device::accel_device()
 	m_data_node = info.data_node_path;
 	m_enable_node = info.enable_node_path;
 	m_interval_node = info.interval_node_path;
-
-	if (!config.get(SENSOR_TYPE_ACCEL, m_model_id, ELEMENT_VENDOR, m_vendor)) {
-		_E("[VENDOR] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_vendor = %s", m_vendor.c_str());
-
-	if (!config.get(SENSOR_TYPE_ACCEL, m_model_id, ELEMENT_NAME, m_chip_name)) {
-		_E("[NAME] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_chip_name = %s",m_chip_name.c_str());
-
-	long resolution;
-
-	if (!config.get(SENSOR_TYPE_ACCEL, m_model_id, ELEMENT_RESOLUTION, resolution)) {
-		_E("[RESOLUTION] is empty");
-		throw ENXIO;
-	}
-
-	m_resolution = (int)resolution;
-
-	_I("m_resolution = %d",m_resolution);
-
-	double raw_data_unit;
-
-	if (!config.get(SENSOR_TYPE_ACCEL, m_model_id, ELEMENT_RAW_DATA_UNIT, raw_data_unit)) {
-		_E("[RAW_DATA_UNIT] is empty");
-		throw ENXIO;
-	}
-
-	m_raw_data_unit = (float)(raw_data_unit);
-	_I("m_raw_data_unit = %f", m_raw_data_unit);
 
 	m_node_handle = open(m_data_node.c_str(), O_RDONLY);
 
@@ -165,7 +124,7 @@ accel_device::accel_device()
 		};
 	}
 
-	_I("accel_sensor is created!");
+	_I("accel_device is created!");
 }
 
 accel_device::~accel_device()
@@ -173,23 +132,16 @@ accel_device::~accel_device()
 	close(m_node_handle);
 	m_node_handle = -1;
 
-	_I("accel_sensor is destroyed!");
+	_I("accel_device is destroyed!");
 }
 
-int accel_device::get_poll_fd()
+int accel_device::get_poll_fd(void)
 {
 	return m_node_handle;
 }
 
 int accel_device::get_sensors(const sensor_info_t **sensors)
 {
-	sensor_info.model_name = m_chip_name.c_str();
-	sensor_info.vendor = m_vendor.c_str();
-	sensor_info.min_range = MIN_RANGE(m_resolution) * RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(m_raw_data_unit);
-	sensor_info.max_range = MAX_RANGE(m_resolution) * RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(m_raw_data_unit);
-	sensor_info.resolution = RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(m_raw_data_unit);
-	sensor_info.min_interval = 1;
-	sensor_info.max_batch_count = 0;
 	*sensors = &sensor_info;
 
 	return 1;
@@ -368,7 +320,6 @@ int accel_device::read_fd(uint32_t **ids)
 
 int accel_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 {
-	int remains = 1;
 	sensor_data_t *sensor_data;
 	sensor_data = (sensor_data_t *)malloc(sizeof(sensor_data_t));
 	retvm_if(!sensor_data, -ENOMEM, "Memory allocation failed");
@@ -385,13 +336,12 @@ int accel_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 	*data = sensor_data;
 	*length = sizeof(sensor_data_t);
 
-	return --remains;
+	return 1;
 }
 
 void accel_device::raw_to_base(sensor_data_t *data)
 {
-	data->value_count = 3;
-	data->values[0] = RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(data->values[0] * m_raw_data_unit);
-	data->values[1] = RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(data->values[1] * m_raw_data_unit);
-	data->values[2] = RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(data->values[2] * m_raw_data_unit);
+	data->values[0] = RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(data->values[0] * RAW_DATA_UNIT);
+	data->values[1] = RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(data->values[1] * RAW_DATA_UNIT);
+	data->values[2] = RAW_DATA_TO_METRE_PER_SECOND_SQUARED_UNIT(data->values[2] * RAW_DATA_UNIT);
 }

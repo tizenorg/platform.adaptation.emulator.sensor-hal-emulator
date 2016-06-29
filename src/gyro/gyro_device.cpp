@@ -27,13 +27,15 @@
 #include <util.h>
 #include <sensor_common.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
+
 #include "gyro_device.h"
 
-#define DPS_TO_MDPS 1000
-#define RAW_DATA_TO_DPS_UNIT(X) ((float)(X)/((float)DPS_TO_MDPS))
-#define MIN_RANGE(RES) (-((1 << (RES))/2))
-#define MAX_RANGE(RES) (((1 << (RES))/2)-1)
+#define MODEL_NAME "maru_sensor_gyro_1"
+#define VENDOR "Tizen_SDK"
+#define RESOLUTION 16
+#define RAW_DATA_UNIT 1000
+#define MIN_INTERVAL 1
+#define MAX_BATCH_COUNT 0
 
 #define SENSOR_NAME "SENSOR_GYROSCOPE"
 #define SENSOR_TYPE_GYRO		"GYRO"
@@ -41,18 +43,23 @@
 #define INPUT_NAME	"gyro_sensor"
 #define GYRO_SENSORHUB_POLL_NODE_NAME "gyro_poll_delay"
 
+#define DPS_TO_MDPS 1000
+#define RAW_DATA_TO_DPS_UNIT(X) ((float)(X)/((float)DPS_TO_MDPS))
+#define MIN_RANGE(RES) (-((1 << (RES))/2))
+#define MAX_RANGE(RES) (((1 << (RES))/2)-1)
+
 static sensor_info_t sensor_info = {
 	id: 0x1,
 	name: SENSOR_NAME,
 	type: SENSOR_DEVICE_GYROSCOPE,
 	event_type: (SENSOR_DEVICE_GYROSCOPE << SENSOR_EVENT_SHIFT) | RAW_DATA_EVENT,
-	model_name: UNKNOWN_NAME,
-	vendor: UNKNOWN_NAME,
-	min_range: 0,
-	max_range: 0,
-	resolution: 0,
-	min_interval: 0,
-	max_batch_count: 0,
+	model_name: MODEL_NAME,
+	vendor: VENDOR,
+	min_range: MIN_RANGE(RESOLUTION) * RAW_DATA_TO_DPS_UNIT(RAW_DATA_UNIT),
+	max_range: MAX_RANGE(RESOLUTION) * RAW_DATA_TO_DPS_UNIT(RAW_DATA_UNIT),
+	resolution: RAW_DATA_TO_DPS_UNIT(RAW_DATA_UNIT),
+	min_interval: MIN_INTERVAL,
+	max_batch_count: MAX_BATCH_COUNT,
 	wakeup_supported: false
 };
 
@@ -66,15 +73,9 @@ gyro_device::gyro_device()
 , m_sensorhub_controlled(false)
 {
 	const std::string sensorhub_interval_node_name = GYRO_SENSORHUB_POLL_NODE_NAME;
-	config::sensor_config &config = config::sensor_config::get_instance();
 
 	node_info_query query;
 	node_info info;
-
-	if (!util::find_model_id(SENSOR_TYPE_GYRO, m_model_id)) {
-		_E("Failed to find model id");
-		throw ENXIO;
-	}
 
 	query.sensorhub_controlled = m_sensorhub_controlled = util::is_sensorhub_controlled(sensorhub_interval_node_name);
 	query.sensor_type = SENSOR_TYPE_GYRO;
@@ -94,44 +95,10 @@ gyro_device::gyro_device()
 	m_enable_node = info.enable_node_path;
 	m_interval_node = info.interval_node_path;
 
-	if (!config.get(SENSOR_TYPE_GYRO, m_model_id, ELEMENT_VENDOR, m_vendor)) {
-		_E("[VENDOR] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_vendor = %s", m_vendor.c_str());
-
-	if (!config.get(SENSOR_TYPE_GYRO, m_model_id, ELEMENT_NAME, m_chip_name)) {
-		_E("[NAME] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_chip_name = %s",m_chip_name.c_str());
-
-	long resolution;
-
-	if (!config.get(SENSOR_TYPE_GYRO, m_model_id, ELEMENT_RESOLUTION, resolution)) {
-		_E("[RESOLUTION] is empty");
-		throw ENXIO;
-	}
-
-	m_resolution = (int)resolution;
-	_I("m_resolution = %d",m_resolution);
-
-	double raw_data_unit;
-
-	if (!config.get(SENSOR_TYPE_GYRO, m_model_id, ELEMENT_RAW_DATA_UNIT, raw_data_unit)) {
-		_E("[RAW_DATA_UNIT] is empty");
-		throw ENXIO;
-	}
-
-	m_raw_data_unit = (float)(raw_data_unit);
-	_I("m_raw_data_unit = %f", m_raw_data_unit);
-
 	m_node_handle = open(m_data_node.c_str(), O_RDONLY);
 
 	if (m_node_handle < 0) {
-		_ERRNO(errno, _E, "gyro handle open fail for gyro device");
+		_ERRNO(errno, _E, "Failed to open gyro handle");
 		throw ENXIO;
 	}
 
@@ -154,8 +121,7 @@ gyro_device::gyro_device()
 		};
 	}
 
-	_I("RAW_DATA_TO_DPS_UNIT(m_raw_data_unit) = [%f]",RAW_DATA_TO_DPS_UNIT(m_raw_data_unit));
-	_I("gyro_sensor is created!");
+	_I("gyro_device is created!");
 }
 
 gyro_device::~gyro_device()
@@ -163,7 +129,7 @@ gyro_device::~gyro_device()
 	close(m_node_handle);
 	m_node_handle = -1;
 
-	_I("gyro_sensor is destroyed!");
+	_I("gyro_device is destroyed!");
 }
 
 int gyro_device::get_poll_fd(void)
@@ -173,13 +139,6 @@ int gyro_device::get_poll_fd(void)
 
 int gyro_device::get_sensors(const sensor_info_t **sensors)
 {
-	sensor_info.model_name = m_chip_name.c_str();
-	sensor_info.vendor = m_vendor.c_str();
-	sensor_info.min_range = MIN_RANGE(m_resolution) * RAW_DATA_TO_DPS_UNIT(m_raw_data_unit);
-	sensor_info.max_range = MAX_RANGE(m_resolution) * RAW_DATA_TO_DPS_UNIT(m_raw_data_unit);
-	sensor_info.resolution = RAW_DATA_TO_DPS_UNIT(m_raw_data_unit);
-	sensor_info.min_interval = 1;
-	sensor_info.max_batch_count = 0;
 	*sensors = &sensor_info;
 
 	return 1;
@@ -236,7 +195,7 @@ bool gyro_device::update_value_input_event(void)
 	while ((syn == false) && (read_input_cnt < INPUT_MAX_BEFORE_SYN)) {
 		int len = read(m_node_handle, &gyro_input, sizeof(gyro_input));
 		if (len != sizeof(gyro_input)) {
-			_E("gyro_file read fail, read_len = %d",len);
+			_E("gyro_file read fail, read_len = %d", len);
 			return false;
 		}
 
@@ -244,22 +203,22 @@ bool gyro_device::update_value_input_event(void)
 
 		if (gyro_input.type == EV_REL) {
 			switch (gyro_input.code) {
-				case REL_RX:
-					gyro_raw[0] = (int)gyro_input.value;
-					x = true;
-					break;
-				case REL_RY:
-					gyro_raw[1] = (int)gyro_input.value;
-					y = true;
-					break;
-				case REL_RZ:
-					gyro_raw[2] = (int)gyro_input.value;
-					z = true;
-					break;
-				default:
-					_E("gyro_input event[type = %d, code = %d] is unknown.", gyro_input.type, gyro_input.code);
-					return false;
-					break;
+			case REL_RX:
+				gyro_raw[0] = (int)gyro_input.value;
+				x = true;
+				break;
+			case REL_RY:
+				gyro_raw[1] = (int)gyro_input.value;
+				y = true;
+				break;
+			case REL_RZ:
+				gyro_raw[2] = (int)gyro_input.value;
+				z = true;
+				break;
+			default:
+				_E("gyro_input event[type = %d, code = %d] is unknown.", gyro_input.type, gyro_input.code);
+				return false;
+				break;
 			}
 		} else if (gyro_input.type == EV_SYN) {
 			syn = true;
@@ -380,8 +339,7 @@ int gyro_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 
 void gyro_device::raw_to_base(sensor_data_t *data)
 {
-	data->value_count = 3;
-	data->values[0] = data->values[0] * RAW_DATA_TO_DPS_UNIT(m_raw_data_unit);
-	data->values[1] = data->values[1] * RAW_DATA_TO_DPS_UNIT(m_raw_data_unit);
-	data->values[2] = data->values[2] * RAW_DATA_TO_DPS_UNIT(m_raw_data_unit);
+	data->values[0] = data->values[0] * RAW_DATA_TO_DPS_UNIT(RAW_DATA_UNIT);
+	data->values[1] = data->values[1] * RAW_DATA_TO_DPS_UNIT(RAW_DATA_UNIT);
+	data->values[2] = data->values[2] * RAW_DATA_TO_DPS_UNIT(RAW_DATA_UNIT);
 }

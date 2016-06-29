@@ -27,8 +27,17 @@
 #include <util.h>
 #include <sensor_common.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
+
 #include "geomag_device.h"
+
+#define MODEL_NAME "maru_sensor_geo_1"
+#define VENDOR "Tizen_SDK"
+#define RESOLUTION 14
+#define RAW_DATA_UNIT 0.6
+#define MIN_RANGE -2000
+#define MAX_RANGE 2000
+#define MIN_INTERVAL 1
+#define MAX_BATCH_COUNT 0
 
 #define SENSOR_NAME "SENSOR_GEOMAGNETIC"
 #define SENSOR_TYPE_MAGNETIC	"MAGNETIC"
@@ -41,13 +50,13 @@ static sensor_info_t sensor_info = {
 	name: SENSOR_NAME,
 	type: SENSOR_DEVICE_GEOMAGNETIC,
 	event_type: (SENSOR_DEVICE_GEOMAGNETIC << SENSOR_EVENT_SHIFT) | RAW_DATA_EVENT,
-	model_name: UNKNOWN_NAME,
-	vendor: UNKNOWN_NAME,
-	min_range: 0,
-	max_range: 0,
-	resolution: 0,
-	min_interval: 0,
-	max_batch_count: 0,
+	model_name: MODEL_NAME,
+	vendor: VENDOR,
+	min_range: MIN_RANGE,
+	max_range: MAX_RANGE,
+	resolution: RAW_DATA_UNIT,
+	min_interval: MIN_INTERVAL,
+	max_batch_count: MAX_BATCH_COUNT,
 	wakeup_supported: false
 };
 
@@ -62,16 +71,9 @@ geomag_device::geomag_device()
 , m_sensorhub_controlled(false)
 {
 	const std::string sensorhub_interval_node_name = GEOMAG_SENSORHUB_POLL_NODE_NAME;
-	config::sensor_config &config = config::sensor_config::get_instance();
 
 	node_info_query query;
 	node_info info;
-
-	if (!util::find_model_id(SENSOR_TYPE_MAGNETIC, m_model_id)) {
-		_E("Failed to find model id");
-		throw ENXIO;
-
-	}
 
 	query.sensorhub_controlled = m_sensorhub_controlled = util::is_sensorhub_controlled(sensorhub_interval_node_name);
 	query.sensor_type = SENSOR_TYPE_MAGNETIC;
@@ -91,54 +93,10 @@ geomag_device::geomag_device()
 	m_enable_node = info.enable_node_path;
 	m_interval_node = info.interval_node_path;
 
-	if (!config.get(SENSOR_TYPE_MAGNETIC, m_model_id, ELEMENT_VENDOR, m_vendor)) {
-		_E("[VENDOR] is empty\n");
-		throw ENXIO;
-	}
-
-	_I("m_vendor = %s", m_vendor.c_str());
-
-	if (!config.get(SENSOR_TYPE_MAGNETIC, m_model_id, ELEMENT_NAME, m_chip_name)) {
-		_E("[NAME] is empty\n");
-		throw ENXIO;
-	}
-
-	_I("m_chip_name = %s\n",m_chip_name.c_str());
-
-	double min_range;
-
-	if (!config.get(SENSOR_TYPE_MAGNETIC, m_model_id, ELEMENT_MIN_RANGE, min_range)) {
-		_E("[MIN_RANGE] is empty\n");
-		throw ENXIO;
-	}
-
-	m_min_range = (float)min_range;
-	_I("m_min_range = %f\n",m_min_range);
-
-	double max_range;
-
-	if (!config.get(SENSOR_TYPE_MAGNETIC, m_model_id, ELEMENT_MAX_RANGE, max_range)) {
-		_E("[MAX_RANGE] is empty\n");
-		throw ENXIO;
-	}
-
-	m_max_range = (float)max_range;
-	_I("m_max_range = %f\n",m_max_range);
-
-	double raw_data_unit;
-
-	if (!config.get(SENSOR_TYPE_MAGNETIC, m_model_id, ELEMENT_RAW_DATA_UNIT, raw_data_unit)) {
-		_E("[RAW_DATA_UNIT] is empty\n");
-		throw ENXIO;
-	}
-
-	m_raw_data_unit = (float)(raw_data_unit);
-	_I("m_raw_data_unit = %f\n", m_raw_data_unit);
-
 	m_node_handle = open(m_data_node.c_str(), O_RDONLY);
 
 	if (m_node_handle < 0) {
-		_ERRNO(errno, _E, "geomag handle open fail for geomag device");
+		_ERRNO(errno, _E, "Failed to open geomags handle");
 		throw ENXIO;
 	}
 
@@ -161,7 +119,7 @@ geomag_device::geomag_device()
 		};
 	}
 
-	_I("geomag_device is created!\n");
+	_I("geomag_device is created!");
 }
 
 geomag_device::~geomag_device()
@@ -169,7 +127,7 @@ geomag_device::~geomag_device()
 	close(m_node_handle);
 	m_node_handle = -1;
 
-	_I("geomag_sensor is destroyed!\n");
+	_I("geomag_sensor is destroyed!");
 }
 
 int geomag_device::get_poll_fd(void)
@@ -179,13 +137,6 @@ int geomag_device::get_poll_fd(void)
 
 int geomag_device::get_sensors(const sensor_info_t **sensors)
 {
-	sensor_info.model_name = m_chip_name.c_str();
-	sensor_info.vendor = m_vendor.c_str();
-	sensor_info.min_range = m_min_range;
-	sensor_info.max_range = m_max_range;
-	sensor_info.resolution = m_raw_data_unit;
-	sensor_info.min_interval = 1;
-	sensor_info.max_batch_count = 0;
 	*sensors = &sensor_info;
 
 	return 1;
@@ -197,7 +148,7 @@ bool geomag_device::enable(uint32_t id)
 	set_interval(id, m_polling_interval);
 
 	m_fired_time = 0;
-	INFO("Enable geomagnetic sensor");
+	_I("Enable geomagnetic sensor");
 	return true;
 }
 
@@ -205,7 +156,7 @@ bool geomag_device::disable(uint32_t id)
 {
 	util::set_enable_node(m_enable_node, m_sensorhub_controlled, false, SENSORHUB_GEOMAGNETIC_ENABLE_BIT);
 
-	INFO("Disable geomagnetic sensor");
+	_I("Disable geomagnetic sensor");
 	return true;
 }
 
@@ -216,11 +167,11 @@ bool geomag_device::set_interval(uint32_t id, unsigned long val)
 	polling_interval_ns = ((unsigned long long)(val) * 1000llu * 1000llu);
 
 	if (!util::set_node_value(m_interval_node, polling_interval_ns)) {
-		ERR("Failed to set polling resource: %s\n", m_interval_node.c_str());
+		_E("Failed to set polling resource: %s", m_interval_node.c_str());
 		return false;
 	}
 
-	INFO("Interval is changed from %dms to %dms", m_polling_interval, val);
+	_I("Interval is changed from %dms to %dms", m_polling_interval, val);
 	m_polling_interval = val;
 	return true;
 }
@@ -242,7 +193,7 @@ bool geomag_device::update_value_input_event(void)
 	while ((syn == false) && (read_input_cnt < INPUT_MAX_BEFORE_SYN)) {
 		int len = read(m_node_handle, &geo_input, sizeof(geo_input));
 		if (len != sizeof(geo_input)) {
-			_E("geo_file read fail, read_len = %d\n",len);
+			_E("geo_file read fail, read_len = %d",len);
 			return false;
 		}
 
@@ -250,26 +201,26 @@ bool geomag_device::update_value_input_event(void)
 
 		if (geo_input.type == EV_REL) {
 			switch (geo_input.code) {
-				case REL_RX:
-					geo_raw[0] = (int)geo_input.value;
-					x = true;
-					break;
-				case REL_RY:
-					geo_raw[1] = (int)geo_input.value;
-					y = true;
-					break;
-				case REL_RZ:
-					geo_raw[2] = (int)geo_input.value;
-					z = true;
-					break;
-				case REL_HWHEEL:
-					geo_raw[3] = (int)geo_input.value;
-					hdst = true;
-					break;
-				default:
-					_E("geo_input event[type = %d, code = %d] is unknown.", geo_input.type, geo_input.code);
-					return false;
-					break;
+			case REL_RX:
+				geo_raw[0] = (int)geo_input.value;
+				x = true;
+				break;
+			case REL_RY:
+				geo_raw[1] = (int)geo_input.value;
+				y = true;
+				break;
+			case REL_RZ:
+				geo_raw[2] = (int)geo_input.value;
+				z = true;
+				break;
+			case REL_HWHEEL:
+				geo_raw[3] = (int)geo_input.value;
+				hdst = true;
+				break;
+			default:
+				_E("geo_input event[type = %d, code = %d] is unknown.", geo_input.type, geo_input.code);
+				return false;
+				break;
 			}
 		} else if (geo_input.type == EV_SYN) {
 			syn = true;
@@ -300,7 +251,6 @@ bool geomag_device::update_value_input_event(void)
 
 	return true;
 }
-
 
 bool geomag_device::update_value_iio(void)
 {
@@ -359,7 +309,7 @@ bool geomag_device::update_value_iio(void)
 int geomag_device::read_fd(uint32_t **ids)
 {
 	if (!update_value()) {
-		DBG("Failed to update value");
+		_D("Failed to update value");
 		return false;
 	}
 
@@ -396,7 +346,7 @@ int geomag_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 
 void geomag_device::raw_to_base(sensor_data_t *data)
 {
-	data->values[0] = data->values[0] * m_raw_data_unit;
-	data->values[1] = data->values[1] * m_raw_data_unit;
-	data->values[2] = data->values[2] * m_raw_data_unit;
+	data->values[0] = data->values[0] * RAW_DATA_UNIT;
+	data->values[1] = data->values[1] * RAW_DATA_UNIT;
+	data->values[2] = data->values[2] * RAW_DATA_UNIT;
 }

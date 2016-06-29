@@ -42,11 +42,8 @@ public:
 private:
 	int m_node_handle;
 	int m_pressure;
-	int m_resolution;
 	int m_temperature;
 	float m_sea_level_pressure;
-	float m_temperature_resolution;
-	float m_temperature_offset;
 	unsigned long m_polling_interval;
 	unsigned long long m_fired_time;
 	bool m_sensorhub_controlled;
@@ -55,14 +52,6 @@ private:
 	std::string m_data_node;
 	std::string m_enable_node;
 	std::string m_interval_node;
-
-	std::string m_model_id;
-	std::string m_vendor;
-	std::string m_chip_name;
-
-	float m_min_range;
-	float m_max_range;
-	float m_raw_data_unit;
 
 	std::function<bool (void)> update_value;
 

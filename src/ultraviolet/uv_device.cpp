@@ -27,15 +27,24 @@
 #include <util.h>
 #include <sensor_common.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
+
 #include "uv_device.h"
 
-#define UNKNOWN_NAME "UNKNOWN"
-#define SENSOR_NAME "ULTRAVIOLET_SENSOR"
+#define MODEL_NAME "maru_sensor_uv_1"
+#define VENDOR "Tizen_SDK"
+#define MIN_RANGE 0
+#define MAX_RANGE 15
+#define RESOLUTION 1
+#define RAW_DATA_UNIT 0.1
+#define MIN_INTERVAL 1
+#define MAX_BATCH_COUNT 0
 
+#define SENSOR_NAME "ULTRAVIOLET_SENSOR"
 #define SENSOR_TYPE_ULTRAVIOLET		"ULTRAVIOLET"
-#define UV_SENSORHUB_POLL_NODE_NAME "uv_poll_dealy"
+
 #define INPUT_NAME "uv_sensor"
+#define UV_SENSORHUB_POLL_NODE_NAME "uv_poll_dealy"
+
 #define IIO_ENABLE_NAME "uv_enable"
 
 #define BIAS	1
@@ -45,38 +54,27 @@ static sensor_info_t sensor_info = {
 	name: SENSOR_NAME,
 	type: SENSOR_DEVICE_ULTRAVIOLET,
 	event_type: (SENSOR_DEVICE_ULTRAVIOLET << SENSOR_EVENT_SHIFT) | RAW_DATA_EVENT,
-	model_name: UNKNOWN_NAME,
-	vendor: UNKNOWN_NAME,
-	min_range: 0,
-	max_range: 0,
-	resolution: 0,
-	min_interval: 0,
-	max_batch_count: 0,
+	model_name: MODEL_NAME,
+	vendor: VENDOR,
+	min_range: MIN_RANGE,
+	max_range: MAX_RANGE,
+	resolution: RAW_DATA_UNIT,
+	min_interval: MIN_INTERVAL,
+	max_batch_count: MAX_BATCH_COUNT,
 	wakeup_supported: false
 };
-
-std::vector<uint32_t> uv_device::event_ids;
 
 uv_device::uv_device()
 : m_node_handle(-1)
 , m_ultraviolet(0)
 , m_polling_interval(1000)
 , m_fired_time(0)
-, m_raw_data_unit(0)
-, m_min_range(0)
-, m_max_range(0)
 , m_sensorhub_controlled(false)
 {
 	const std::string sensorhub_interval_node_name = UV_SENSORHUB_POLL_NODE_NAME;
-	config::sensor_config &config = config::sensor_config::get_instance();
 
 	node_info_query query;
 	node_info info;
-
-	if (!util::find_model_id(SENSOR_TYPE_ULTRAVIOLET, m_model_id)) {
-		_E("Failed to find model id");
-		throw ENXIO;
-	}
 
 	query.sensorhub_controlled = m_sensorhub_controlled = util::is_sensorhub_controlled(sensorhub_interval_node_name);
 	query.sensor_type = SENSOR_TYPE_ULTRAVIOLET;
@@ -96,67 +94,24 @@ uv_device::uv_device()
 	m_enable_node = info.enable_node_path;
 	m_interval_node = info.interval_node_path;
 
-	if (!config.get(SENSOR_TYPE_ULTRAVIOLET, m_model_id, ELEMENT_VENDOR, m_vendor)) {
-		_E("[VENDOR] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_vendor = %s", m_vendor.c_str());
-
-	if (!config.get(SENSOR_TYPE_ULTRAVIOLET, m_model_id, ELEMENT_NAME, m_chip_name)) {
-		_E("[NAME] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_chip_name = %s",m_chip_name.c_str());
-
-	double min_range;
-
-	if (!config.get(SENSOR_TYPE_ULTRAVIOLET, m_model_id, ELEMENT_MIN_RANGE, min_range)) {
-		ERR("[MIN_RANGE] is empty\n");
-		throw ENXIO;
-	}
-
-	m_min_range = (float)min_range;
-	INFO("m_min_range = %f\n",m_min_range);
-
-	double max_range;
-
-	if (!config.get(SENSOR_TYPE_ULTRAVIOLET, m_model_id, ELEMENT_MAX_RANGE, max_range)) {
-		ERR("[MAX_RANGE] is empty\n");
-		throw ENXIO;
-	}
-
-	m_max_range = (float)max_range;
-	INFO("m_max_range = %f\n",m_max_range);
-
-	double raw_data_unit;
-
-	if (!config.get(SENSOR_TYPE_ULTRAVIOLET, m_model_id, ELEMENT_RAW_DATA_UNIT, raw_data_unit)) {
-		_E("[RAW_DATA_UNIT] is empty");
-		throw ENXIO;
-	}
-
-	m_raw_data_unit = (float)(raw_data_unit);
-	_I("m_raw_data_unit = %f", m_raw_data_unit);
-
 	m_node_handle = open(m_data_node.c_str(), O_RDONLY);
 
 	if (m_node_handle < 0) {
-		_ERRNO(errno, _E, "uv handle open fail for uv processor");
+		_ERRNO(errno, _E, "uv handle open fail for uv device");
 		throw ENXIO;
 	}
 
-	if (m_method == INPUT_EVENT_METHOD) {
-		if (!util::set_monotonic_clock(m_node_handle))
-			throw ENXIO;
-	}
+	if (m_method != INPUT_EVENT_METHOD)
+		throw ENXIO;
+
+	if (!util::set_monotonic_clock(m_node_handle))
+		throw ENXIO;
 
 	update_value = [=]() {
 		return this->update_value_input_event();
 	};
 
-	_I("uv_sensor is created!");
+	_I("uv_device is created!");
 }
 
 uv_device::~uv_device()
@@ -167,20 +122,13 @@ uv_device::~uv_device()
 	_I("uv_sensor is destroyed!");
 }
 
-int uv_device::get_poll_fd()
+int uv_device::get_poll_fd(void)
 {
 	return m_node_handle;
 }
 
 int uv_device::get_sensors(const sensor_info_t **sensors)
 {
-	sensor_info.model_name = m_chip_name.c_str();
-	sensor_info.vendor = m_vendor.c_str();
-	sensor_info.min_range = m_min_range;
-	sensor_info.max_range = m_max_range;
-	sensor_info.resolution = m_raw_data_unit;
-	sensor_info.min_interval = 1;
-	sensor_info.max_batch_count = 0;
 	*sensors = &sensor_info;
 
 	return 1;
@@ -280,7 +228,6 @@ int uv_device::read_fd(uint32_t **ids)
 
 int uv_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 {
-	int remains = 1;
 	sensor_data_t *sensor_data;
 	sensor_data = (sensor_data_t *)malloc(sizeof(sensor_data_t));
 	retvm_if(!sensor_data, -ENOMEM, "Memory allocation failed");
@@ -295,10 +242,10 @@ int uv_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 	*data = sensor_data;
 	*length = sizeof(sensor_data_t);
 
-	return --remains;
+	return 1;
 }
 
 void uv_device::raw_to_base(sensor_data_t *data)
 {
-	data->values[0] = data->values[0] * m_raw_data_unit;
+	data->values[0] = data->values[0] * RAW_DATA_UNIT;
 }

@@ -45,7 +45,6 @@ private:
 	int m_spo2;
 	int m_peek_to_peek;
 	float m_snr;
-	float m_raw_data_unit;
 	unsigned long m_polling_interval;
 	unsigned long long m_fired_time;
 	bool m_interval_supported;
@@ -55,10 +54,6 @@ private:
 	std::string m_data_node;
 	std::string m_enable_node;
 	std::string m_interval_node;
-
-	std::string m_model_id;
-	std::string m_vendor;
-	std::string m_chip_name;
 
 	std::function<bool (void)> update_value;
 
