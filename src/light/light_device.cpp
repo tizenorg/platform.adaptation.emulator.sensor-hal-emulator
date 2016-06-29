@@ -29,35 +29,38 @@
 #include <util.h>
 #include <sensor_common.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
+
 #include "light_device.h"
 
-#define BIAS	1
+#define MODEL_NAME "maru_sensor_light_1"
+#define VENDOR "Tizen_SDK"
+#define MIN_RANGE 0
+#define MAX_RANGE 65536
+#define RESOLUTION 1
+#define RAW_DATA_UNIT 1
+#define MIN_INTERVAL 1
+#define MAX_BATCH_COUNT 0
 
 #define SENSOR_NAME "SENSOR_LIGHT"
-
-/* ADC value received from Kernel */
-#define MODEL_ID_CAPELLA		"CM36686"
-
 #define SENSOR_TYPE_LIGHT		"LIGHT"
 
 #define INPUT_NAME	"light_sensor"
 #define LIGHT_SENSORHUB_POLL_NODE_NAME "light_poll_delay"
 
-const static int light_level[] = {0, 1, 165, 288, 497, 869, 1532, 2692, 4692, 8280, 21428, 65535, 137852};
+#define BIAS	1
 
 static sensor_info_t sensor_info = {
 	id: 0x1,
 	name: SENSOR_NAME,
 	type: SENSOR_DEVICE_LIGHT,
 	event_type: (SENSOR_DEVICE_LIGHT << SENSOR_EVENT_SHIFT) | RAW_DATA_EVENT,
-	model_name: UNKNOWN_NAME,
-	vendor: UNKNOWN_NAME,
-	min_range: 0,
-	max_range: 65536,
-	resolution: 1,
-	min_interval: 1,
-	max_batch_count: 0,
+	model_name: MODEL_NAME,
+	vendor: VENDOR,
+	min_range: MIN_RANGE,
+	max_range: MAX_RANGE,
+	resolution: RAW_DATA_UNIT,
+	min_interval: MIN_INTERVAL,
+	max_batch_count: MAX_BATCH_COUNT,
 	wakeup_supported: false
 };
 
@@ -69,15 +72,9 @@ light_device::light_device()
 , m_sensorhub_controlled(false)
 {
 	const std::string sensorhub_interval_node_name = LIGHT_SENSORHUB_POLL_NODE_NAME;
-	config::sensor_config &config = config::sensor_config::get_instance();
 
 	node_info_query query;
 	node_info info;
-
-	if (!util::find_model_id(SENSOR_TYPE_LIGHT, m_model_id)) {
-		_E("Failed to find model id");
-		throw ENXIO;
-	}
 
 	query.sensorhub_controlled = m_sensorhub_controlled = util::is_sensorhub_controlled(sensorhub_interval_node_name);
 	query.sensor_type = SENSOR_TYPE_LIGHT;
@@ -97,20 +94,6 @@ light_device::light_device()
 	m_enable_node = info.enable_node_path;
 	m_interval_node = info.interval_node_path;
 
-	if (!config.get(SENSOR_TYPE_LIGHT, m_model_id, ELEMENT_VENDOR, m_vendor)) {
-		_E("[VENDOR] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_vendor = %s", m_vendor.c_str());
-
-	if (!config.get(SENSOR_TYPE_LIGHT, m_model_id, ELEMENT_NAME, m_chip_name)) {
-		_E("[NAME] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_chip_name = %s",m_chip_name.c_str());
-
 	m_node_handle = open(m_data_node.c_str(), O_RDONLY);
 
 	if (m_node_handle < 0) {
@@ -118,20 +101,15 @@ light_device::light_device()
 		throw ENXIO;
 	}
 
-	if (m_method == INPUT_EVENT_METHOD) {
-		if (!util::set_monotonic_clock(m_node_handle))
-			throw ENXIO;
+	if (m_method != INPUT_EVENT_METHOD)
+		throw ENXIO;
 
-		if (m_chip_name == MODEL_ID_CAPELLA) {
-			update_value = [=]() {
-				return this->update_value_adc();
-			};
-		} else {
-			update_value = [=]() {
-				return this->update_value_lux();
-			};
-		}
-	}
+	if (!util::set_monotonic_clock(m_node_handle))
+		throw ENXIO;
+
+	update_value = [=]() {
+		return this->update_value_lux();
+	};
 
 	_I("light_device is created!");
 }
@@ -144,15 +122,13 @@ light_device::~light_device()
 	_I("light_device is destroyed!");
 }
 
-int light_device::get_poll_fd()
+int light_device::get_poll_fd(void)
 {
 	return m_node_handle;
 }
 
 int light_device::get_sensors(const sensor_info_t **sensors)
 {
-	sensor_info.model_name = m_chip_name.c_str();
-	sensor_info.vendor = m_vendor.c_str();
 	*sensors = &sensor_info;
 
 	return 1;
@@ -172,7 +148,7 @@ bool light_device::disable(uint32_t id)
 {
 	util::set_enable_node(m_enable_node, m_sensorhub_controlled, false, SENSORHUB_LIGHT_ENABLE_BIT);
 
-	INFO("Disable light sensor");
+	_I("Disable light sensor");
 	return true;
 }
 
@@ -189,81 +165,6 @@ bool light_device::set_interval(uint32_t id, unsigned long val)
 
 	_I("Interval is changed from %dms to %dms", m_polling_interval, val);
 	m_polling_interval = val;
-	return true;
-}
-
-bool light_device::update_value_adc(void)
-{
-	int light_raw[2] = {0,};
-	int als = -1;
-	int w = -1;
-	int lux = -1;
-	float i_cf = 0.0f;
-	bool adc, white;
-	int read_input_cnt = 0;
-	const int INPUT_MAX_BEFORE_SYN = 10;
-	unsigned long long fired_time = 0;
-	bool syn = false;
-
-	adc = white = false;
-
-	struct input_event light_input;
-	_D("light event detection!");
-
-	while ((syn == false) && (read_input_cnt < INPUT_MAX_BEFORE_SYN)) {
-		int len = read(m_node_handle, &light_input, sizeof(light_input));
-		if (len != sizeof(light_input)) {
-			_E("light_file read fail, read_len = %d",len);
-			return false;
-		}
-
-		++read_input_cnt;
-
-		if (light_input.type == EV_REL) {
-			switch (light_input.code) {
-			case REL_DIAL:
-				light_raw[0] = (int)light_input.value - BIAS;
-				adc = true;
-				break;
-			case REL_WHEEL:
-				light_raw[1] = (int)light_input.value - BIAS;
-				white = true;
-				break;
-			default:
-				_E("light_input event[type = %d, code = %d] is unknown.", light_input.type, light_input.code);
-				return false;
-				break;
-			}
-		} else if (light_input.type == EV_SYN) {
-			syn = true;
-			fired_time = util::get_timestamp(&light_input.time);
-		} else {
-			_E("light_input event[type = %d, code = %d] is unknown.", light_input.type, light_input.code);
-			return false;
-		}
-	}
-
-	if (syn == false) {
-		_E("EV_SYN didn't come until %d inputs had come", read_input_cnt);
-		return false;
-	}
-
-	if (adc && white) {
-		als =  light_raw[0];
-		w = (light_raw[1])? light_raw[1] : 1;
-		i_cf = als / (float) w;
-		if (i_cf >= 0.33f) {
-			lux = 0.6985f * pow(als, 0.9943f);
-		} else {
-			lux = 0.25f * pow(als, 1.0552f);
-		}
-	}
-
-	_D("update_value_lux, lux : %d", lux);
-
-	m_fired_time = fired_time;
-	m_lux = lux;
-
 	return true;
 }
 
@@ -302,7 +203,7 @@ bool light_device::update_value_lux(void)
 int light_device::read_fd(uint32_t **ids)
 {
 	if (!update_value()) {
-		DBG("Failed to update value");
+		_D("Failed to update value");
 		return false;
 	}
 
@@ -316,7 +217,6 @@ int light_device::read_fd(uint32_t **ids)
 
 int light_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 {
-	int remains = 1;
 	sensor_data_t *sensor_data;
 	sensor_data = (sensor_data_t *)malloc(sizeof(sensor_data_t));
 	retvm_if(!sensor_data, -ENOMEM, "Memory allocation failed");
@@ -329,17 +229,5 @@ int light_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 	*data = sensor_data;
 	*length = sizeof(sensor_data_t);
 
-	return --remains;
-}
-
-int light_device::adc_to_light_level(int adc)
-{
-	int level_cnt = ARRAY_SIZE(light_level) - 1;
-
-	for (int i = 0; i < level_cnt; ++i) {
-		if (adc >= light_level[i] && adc < light_level[i + 1])
-			return i;
-	}
-
-	return -1;
+	return 0;
 }

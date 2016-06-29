@@ -28,18 +28,25 @@
 #include <util.h>
 #include <sensor_common.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
 #include "pressure_device.h"
 
 #define SEA_LEVEL_RESOLUTION 0.01
 #define SEA_LEVEL_PRESSURE 101325.0
 #define SEA_LEVEL_EPSILON 0.00001
 
+#define MODEL_NAME "maru_sensor_pressure_1"
+#define VENDOR "Tizen_SDK"
+#define RESOLUTION 1
+#define RAW_DATA_UNIT 0.0193
+#define MIN_INTERVAL 1
+#define MIN_RANGE 260
+#define MAX_RANGE 1260
+#define TEMPERATURE_RESOLUTION 0.05
+#define TEMPERATURE_OFFSET 0
+#define MAX_BATCH_COUNT 0
+
 #define SENSOR_NAME "SENSOR_PRESSURE"
 #define SENSOR_TYPE_PRESSURE "PRESSURE"
-
-#define ELEMENT_TEMPERATURE_RESOLUTION	"TEMPERATURE_RESOLUTION"
-#define ELEMENT_TEMPERATURE_OFFSET		"TEMPERATURE_OFFSET"
 
 #define INPUT_NAME "pressure_sensor"
 #define PRESSURE_SENSORHUB_POLL_NODE_NAME "pressure_poll_delay"
@@ -49,39 +56,29 @@ static sensor_info_t sensor_info = {
 	name: SENSOR_NAME,
 	type: SENSOR_DEVICE_PRESSURE,
 	event_type: (SENSOR_DEVICE_PRESSURE << SENSOR_EVENT_SHIFT) | RAW_DATA_EVENT,
-	model_name: UNKNOWN_NAME,
-	vendor: UNKNOWN_NAME,
-	min_range: 0,
-	max_range: 0,
-	resolution: 0,
-	min_interval: 0,
-	max_batch_count: 0,
+	model_name: MODEL_NAME,
+	vendor: VENDOR,
+	min_range: MIN_RANGE,
+	max_range: MAX_RANGE,
+	resolution: RAW_DATA_UNIT,
+	min_interval: MIN_INTERVAL,
+	max_batch_count: MAX_BATCH_COUNT,
 	wakeup_supported: false
 };
 
 pressure_device::pressure_device()
 : m_node_handle(-1)
 , m_pressure(0)
-, m_resolution(0)
 , m_temperature(0)
 , m_sea_level_pressure(SEA_LEVEL_PRESSURE)
-, m_temperature_resolution(0)
-, m_temperature_offset(0)
 , m_polling_interval(1000)
 , m_fired_time(0)
 , m_sensorhub_controlled(false)
 {
 	const std::string sensorhub_interval_node_name = PRESSURE_SENSORHUB_POLL_NODE_NAME;
-	config::sensor_config &config = config::sensor_config::get_instance();
 
 	node_info_query query;
 	node_info info;
-
-	if (!util::find_model_id(SENSOR_TYPE_PRESSURE, m_model_id)) {
-		_E("Failed to find model id");
-		throw ENXIO;
-
-	}
 
 	query.sensorhub_controlled = m_sensorhub_controlled = util::is_sensorhub_controlled(sensorhub_interval_node_name);
 	query.sensor_type = SENSOR_TYPE_PRESSURE;
@@ -101,69 +98,6 @@ pressure_device::pressure_device()
 	m_enable_node = info.enable_node_path;
 	m_interval_node = info.interval_node_path;
 
-	if (!config.get(SENSOR_TYPE_PRESSURE, m_model_id, ELEMENT_VENDOR, m_vendor)) {
-		_E("[VENDOR] is empty\n");
-		throw ENXIO;
-	}
-
-	_I("m_vendor = %s", m_vendor.c_str());
-
-	if (!config.get(SENSOR_TYPE_PRESSURE, m_model_id, ELEMENT_NAME, m_chip_name)) {
-		_E("[NAME] is empty\n");
-		throw ENXIO;
-	}
-
-	_I("m_chip_name = %s", m_chip_name.c_str());
-
-	double min_range;
-
-	if (!config.get(SENSOR_TYPE_PRESSURE, m_model_id, ELEMENT_MIN_RANGE, min_range)) {
-		_E("[MIN_RANGE] is empty\n");
-		throw ENXIO;
-	}
-
-	m_min_range = (float)min_range;
-	_I("m_min_range = %f\n",m_min_range);
-
-	double max_range;
-
-	if (!config.get(SENSOR_TYPE_PRESSURE, m_model_id, ELEMENT_MAX_RANGE, max_range)) {
-		_E("[MAX_RANGE] is empty\n");
-		throw ENXIO;
-	}
-
-	m_max_range = (float)max_range;
-	_I("m_max_range = %f\n",m_max_range);
-
-	double raw_data_unit;
-
-	if (!config.get(SENSOR_TYPE_PRESSURE, m_model_id, ELEMENT_RAW_DATA_UNIT, raw_data_unit)) {
-		_E("[RAW_DATA_UNIT] is empty\n");
-		throw ENXIO;
-	}
-
-	m_raw_data_unit = (float)(raw_data_unit);
-	_I("m_raw_data_unit = %f\n", m_raw_data_unit);
-
-	double temperature_resolution;
-	if (!config.get(SENSOR_TYPE_PRESSURE, m_model_id, ELEMENT_TEMPERATURE_RESOLUTION, temperature_resolution)) {
-		ERR("[TEMPERATURE_RESOLUTION] is empty\n");
-		throw ENXIO;
-	}
-
-	m_temperature_resolution = (float)temperature_resolution;
-	INFO("m_temperature_resolution = %f\n", m_temperature_resolution);
-
-	double temperature_offset;
-
-	if (!config.get(SENSOR_TYPE_PRESSURE, m_model_id, ELEMENT_TEMPERATURE_OFFSET, temperature_offset)) {
-		ERR("[TEMPERATURE_OFFSET] is empty\n");
-		throw ENXIO;
-	}
-
-	m_temperature_offset = (float)temperature_offset;
-	INFO("m_temperature_offset = %f\n", m_temperature_offset);
-
 	m_node_handle = open(m_data_node.c_str(), O_RDONLY);
 
 	if (m_node_handle < 0) {
@@ -180,7 +114,7 @@ pressure_device::pressure_device()
 		};
 	}
 
-	_I("pressure_device is created!\n");
+	_I("pressure_device is created!");
 }
 
 pressure_device::~pressure_device()
@@ -188,7 +122,7 @@ pressure_device::~pressure_device()
 	close(m_node_handle);
 	m_node_handle = -1;
 
-	_I("pressure_device is destroyed!\n");
+	_I("pressure_device is destroyed!");
 }
 
 int pressure_device::get_poll_fd(void)
@@ -198,13 +132,6 @@ int pressure_device::get_poll_fd(void)
 
 int pressure_device::get_sensors(const sensor_info_t **sensors)
 {
-	sensor_info.model_name = m_chip_name.c_str();
-	sensor_info.vendor = m_vendor.c_str();
-	sensor_info.min_range = m_min_range;
-	sensor_info.max_range = m_max_range;
-	sensor_info.resolution = m_raw_data_unit;
-	sensor_info.min_interval = 1;
-	sensor_info.max_batch_count = 0;
 	*sensors = &sensor_info;
 
 	return 1;
@@ -216,7 +143,7 @@ bool pressure_device::enable(uint32_t id)
 	set_interval(id, m_polling_interval);
 
 	m_fired_time = 0;
-	INFO("Enable pressure sensor");
+	_I("Enable pressure sensor");
 	return true;
 }
 
@@ -224,9 +151,8 @@ bool pressure_device::disable(uint32_t id)
 {
 	util::set_enable_node(m_enable_node, m_sensorhub_controlled, false, SENSORHUB_PRESSURE_ENABLE_BIT);
 
-	INFO("Disable pressure sensor");
+	_I("Disable pressure sensor");
 	return true;
-
 }
 
 bool pressure_device::set_interval(uint32_t id, unsigned long val)
@@ -236,11 +162,11 @@ bool pressure_device::set_interval(uint32_t id, unsigned long val)
 	polling_interval_ns = ((unsigned long long)(val) * 1000llu * 1000llu);
 
 	if (!util::set_node_value(m_interval_node, polling_interval_ns)) {
-		ERR("Failed to set polling resource: %s\n", m_interval_node.c_str());
+		_E("Failed to set polling resource: %s", m_interval_node.c_str());
 		return false;
 	}
 
-	INFO("Interval is changed from %dms to %dms", m_polling_interval, val);
+	_I("Interval is changed from %dms to %dms", m_polling_interval, val);
 	m_polling_interval = val;
 	return true;
 }
@@ -318,7 +244,7 @@ bool pressure_device::update_value_input_event(void)
 int pressure_device::read_fd(uint32_t **ids)
 {
 	if (!update_value()) {
-		DBG("Failed to update value");
+		_D("Failed to update value");
 		return false;
 	}
 
@@ -332,7 +258,6 @@ int pressure_device::read_fd(uint32_t **ids)
 
 int pressure_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 {
-	int remains = 1;
 	sensor_data_t *sensor_data;
 	sensor_data = (sensor_data_t *)malloc(sizeof(sensor_data_t));
 	retvm_if(!sensor_data, -ENOMEM, "Memory allocation failed");
@@ -349,15 +274,15 @@ int pressure_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 	*data = sensor_data;
 	*length = sizeof(sensor_data_t);
 
-	return --remains;
+	return 0;
 }
 
 void pressure_device::raw_to_base(sensor_data_t *data)
 {
-	data->values[0] = data->values[0] * m_raw_data_unit;
+	data->values[0] = data->values[0] * RAW_DATA_UNIT;
 	m_sea_level_pressure = data->values[1] * SEA_LEVEL_RESOLUTION;
 	data->values[1] = pressure_to_altitude(data->values[0]);
-	data->values[2] = data->values[2] * m_temperature_resolution + m_temperature_offset;
+	data->values[2] = data->values[2] * TEMPERATURE_RESOLUTION + TEMPERATURE_OFFSET;
 }
 
 float pressure_device::pressure_to_altitude(float pressure)

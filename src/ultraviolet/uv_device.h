@@ -44,9 +44,6 @@ private:
 	int m_ultraviolet;
 	unsigned long m_polling_interval;
 	unsigned long long m_fired_time;
-	float m_raw_data_unit;
-	float m_min_range;
-	float m_max_range;
 	bool m_sensorhub_controlled;
 
 	int m_method;
@@ -54,13 +51,9 @@ private:
 	std::string m_enable_node;
 	std::string m_interval_node;
 
-	std::string m_model_id;
-	std::string m_vendor;
-	std::string m_chip_name;
-
 	std::function<bool (void)> update_value;
 
-	static std::vector<uint32_t> event_ids;
+	std::vector<uint32_t> event_ids;
 
 	bool update_value_input_event(void);
 

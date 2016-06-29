@@ -54,15 +54,6 @@ private:
 	std::string m_enable_node;
 	std::string m_interval_node;
 
-	std::string m_model_id;
-	std::string m_vendor;
-	std::string m_chip_name;
-
-	int m_resolution;
-	float m_min_range;
-	float m_max_range;
-	float m_raw_data_unit;
-
 	long a_x;
 	long a_y;
 	long a_z;
