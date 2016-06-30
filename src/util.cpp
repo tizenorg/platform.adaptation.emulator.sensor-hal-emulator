@@ -22,7 +22,6 @@
 #include <linux/input.h>
 #include <util.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
 #include <fstream>
 
 using std::ifstream;
@@ -225,59 +224,6 @@ bool util::set_monotonic_clock(int fd)
 	}
 #endif
 	return true;
-}
-
-bool util::find_model_id(const string &sensor_type, string &model_id)
-{
-	std::string dir_path = "/sys/class/sensors/";
-	std::string name_node, name;
-	std::string d_name;
-	DIR *dir = NULL;
-	struct dirent dir_entry;
-	struct dirent *result = NULL;
-	int error;
-	bool find = false;
-
-	dir = opendir(dir_path.c_str());
-	if (!dir) {
-		_D("Failed to open dir: %s", dir_path.c_str());
-		return false;
-	}
-
-	while (true) {
-		error = readdir_r(dir, &dir_entry, &result);
-
-		if (error != 0)
-			continue;
-
-		if (result == NULL)
-			break;
-
-		d_name = std::string(dir_entry.d_name);
-
-		if ((d_name == ".") || (d_name == "..") || (dir_entry.d_ino == 0))
-			continue;
-
-		name_node = dir_path + d_name + string("/name");
-
-		ifstream infile(name_node.c_str());
-
-		if (!infile)
-			continue;
-
-		infile >> name;
-
-		if (!config::sensor_config::get_instance().is_supported(sensor_type, name))
-			continue;
-
-		model_id = name;
-		find = true;
-		break;
-	}
-
-	closedir(dir);
-
-	return find;
 }
 
 bool util::set_enable_node(const string &node_path, bool sensorhub_controlled, bool enable, int enable_bit)

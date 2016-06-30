@@ -27,14 +27,15 @@
 #include <util.h>
 #include <sensor_common.h>
 #include <sensor_log.h>
-#include <sensor_config.h>
+
 #include "proxi_device.h"
 
-#define MODEL_NAME "UNKNOWN"
-#define VENDOR "UNKNOWN"
+#define MODEL_NAME "maru_sensor_proxi_1"
+#define VENDOR "Tizen_SDK"
 #define MIN_RANGE 0
 #define MAX_RANGE 5
 #define RESOLUTION 1
+#define RAW_DATA_UNIT 1
 #define MIN_INTERVAL 1
 #define MAX_BATCH_COUNT 0
 
@@ -55,7 +56,7 @@ static sensor_info_t sensor_info = {
 	vendor: VENDOR,
 	min_range: MIN_RANGE,
 	max_range: MAX_RANGE,
-	resolution: RESOLUTION,
+	resolution: RAW_DATA_UNIT,
 	min_interval: MIN_INTERVAL,
 	max_batch_count: MAX_BATCH_COUNT,
 	wakeup_supported: false
@@ -68,16 +69,9 @@ proxi_device::proxi_device()
 , m_sensorhub_controlled(false)
 {
 	const std::string sensorhub_interval_node_name = PROXI_SENSORHUB_POLL_NODE_NAME;
-	config::sensor_config &config = config::sensor_config::get_instance();
 
 	node_info_query query;
 	node_info info;
-
-	if (!util::find_model_id(SENSOR_TYPE_PROXI, m_model_id)) {
-		_E("Failed to find model id");
-		throw ENXIO;
-
-	}
 
 	query.sensorhub_controlled = m_sensorhub_controlled = util::is_sensorhub_controlled(sensorhub_interval_node_name);
 	query.sensor_type = SENSOR_TYPE_PROXI;
@@ -96,20 +90,6 @@ proxi_device::proxi_device()
 	m_data_node = info.data_node_path;
 	m_enable_node = info.enable_node_path;
 
-	if (!config.get(SENSOR_TYPE_PROXI, m_model_id, ELEMENT_VENDOR, m_vendor)) {
-		_E("[VENDOR] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_vendor = %s", m_vendor.c_str());
-
-	if (!config.get(SENSOR_TYPE_PROXI, m_model_id, ELEMENT_NAME, m_chip_name)) {
-		_E("[NAME] is empty");
-		throw ENXIO;
-	}
-
-	_I("m_chip_name = %s",m_chip_name.c_str());
-
 	m_node_handle = open(m_data_node.c_str(), O_RDONLY);
 
 	if (m_node_handle < 0) {
@@ -117,16 +97,17 @@ proxi_device::proxi_device()
 		throw ENXIO;
 	}
 
-	if (m_method == INPUT_EVENT_METHOD) {
-		if (!util::set_monotonic_clock(m_node_handle))
-			throw ENXIO;
+	if (m_method != INPUT_EVENT_METHOD)
+		throw ENXIO;
 
-		update_value = [=]() {
-			return this->update_value_input_event();
-		};
-	}
+	if (!util::set_monotonic_clock(m_node_handle))
+		throw ENXIO;
 
-	_I("Proxi_sensor_hal is created!");
+	update_value = [=]() {
+		return this->update_value_input_event();
+	};
+
+	_I("Proxi_device is created!");
 }
 
 proxi_device::~proxi_device()
@@ -134,7 +115,7 @@ proxi_device::~proxi_device()
 	close(m_node_handle);
 	m_node_handle = -1;
 
-	_I("Proxi_sensor_hal is destroyed!");
+	_I("Proxi_device is destroyed!");
 }
 
 int proxi_device::get_poll_fd(void)
@@ -144,8 +125,6 @@ int proxi_device::get_poll_fd(void)
 
 int proxi_device::get_sensors(const sensor_info_t **sensors)
 {
-	sensor_info.model_name = m_chip_name.c_str();
-	sensor_info.vendor = m_vendor.c_str();
 	*sensors = &sensor_info;
 
 	return 1;
@@ -156,7 +135,7 @@ bool proxi_device::enable(uint32_t id)
 	util::set_enable_node(m_enable_node, m_sensorhub_controlled, true, SENSORHUB_PROXIMITY_ENABLE_BIT);
 
 	m_fired_time = 0;
-	INFO("Enable proxi sensor");
+	_I("Enable proxi sensor");
 	return true;
 }
 
@@ -164,7 +143,7 @@ bool proxi_device::disable(uint32_t id)
 {
 	util::set_enable_node(m_enable_node, m_sensorhub_controlled, false, SENSORHUB_PROXIMITY_ENABLE_BIT);
 
-	INFO("Disable proxi sensor");
+	_I("Disable proxi sensor");
 	return true;
 }
 
@@ -198,7 +177,7 @@ bool proxi_device::update_value_input_event(void)
 int proxi_device::read_fd(uint32_t **ids)
 {
 	if (!update_value()) {
-		DBG("Failed to update value");
+		_D("Failed to update value");
 		return false;
 	}
 
@@ -212,7 +191,6 @@ int proxi_device::read_fd(uint32_t **ids)
 
 int proxi_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 {
-	int remains = 1;
 	sensor_data_t *sensor_data;
 	sensor_data = (sensor_data_t *)malloc(sizeof(sensor_data_t));
 	retvm_if(!sensor_data, -ENOMEM, "Memory allocation failed");
@@ -225,5 +203,5 @@ int proxi_device::get_data(uint32_t id, sensor_data_t **data, int *length)
 	*data = sensor_data;
 	*length = sizeof(sensor_data_t);
 
-	return --remains;
+	return 0;
 }

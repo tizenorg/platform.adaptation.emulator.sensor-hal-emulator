@@ -53,13 +53,6 @@ private:
 	std::string m_enable_node;
 	std::string m_interval_node;
 
-	std::string m_model_id;
-	std::string m_vendor;
-	std::string m_chip_name;
-
-	int m_resolution;
-	float m_raw_data_unit;
-
 	std::function<bool (void)> update_value;
 
 	std::vector<uint32_t> event_ids;

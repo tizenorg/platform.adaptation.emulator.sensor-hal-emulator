@@ -1,6 +1,6 @@
 Name:       sensor-hal-emulator
 Summary:    Emulator Sensor HAL
-Version:    1.0.0
+Version:    1.0.3
 Release:    0
 Group:      Service/Sensor
 License:    Apache-2.0
@@ -11,10 +11,6 @@ ExcludeArch: %{arm} aarch64
 
 BuildRequires:  cmake
 BuildRequires:  pkgconfig(dlog)
-BuildRequires:  pkgconfig(glib-2.0)
-BuildRequires:  pkgconfig(gio-2.0)
-BuildRequires:  pkgconfig(libxml-2.0)
-BuildRequires:  pkgconfig(vconf)
 BuildRequires:  sensor-hal-devel
 
 %description
@@ -46,7 +42,6 @@ install -m 0644 %SOURCE1 %{buildroot}%{_libdir}/udev/rules.d
 /sbin/ldconfig
 
 %files
-%attr(0644,root,root)/usr/etc/sensor.xml
 %manifest packaging/%{name}.manifest
 %{_libdir}/udev/rules.d/99-sensor.rules
 %{_libdir}/sensor/*.so

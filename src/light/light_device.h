@@ -51,16 +51,10 @@ private:
 	std::string m_data_node;
 	std::string m_interval_node;
 
-	std::string m_model_id;
-	std::string m_vendor;
-	std::string m_chip_name;
-
 	std::function<bool (void)> update_value;
 
 	std::vector<uint32_t> event_ids;
 
-	bool update_value_adc(void);
 	bool update_value_lux(void);
-	int adc_to_light_level(int adc);
 };
 #endif /* _LIGHT_DEVICE_H_ */
